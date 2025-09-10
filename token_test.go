@@ -17,13 +17,16 @@
 package mqtt
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 )
 
 func TestWaitTimeout(t *testing.T) {
-	b := baseToken{}
+	ctx := context.Background()
+
+	b := baseToken{ctx: ctx}
 
 	if b.WaitTimeout(time.Second) {
 		t.Fatal("Should have failed")
@@ -32,7 +35,7 @@ func TestWaitTimeout(t *testing.T) {
 	// Now lets confirm that WaitTimeout returns
 	// setError() grabs the mutex which previously caused issues
 	// when there is a result (it returns true in this case)
-	b = baseToken{complete: make(chan struct{})}
+	b = baseToken{ctx: ctx, complete: make(chan struct{})}
 	go func(bt *baseToken) {
 		bt.setError(errors.New("test error"))
 	}(&b)
@@ -42,14 +45,16 @@ func TestWaitTimeout(t *testing.T) {
 }
 
 func TestWaitTokenTimeout(t *testing.T) {
-	b := baseToken{}
+	ctx := context.Background()
+
+	b := baseToken{ctx: ctx}
 
 	if !errors.Is(WaitTokenTimeout(&b, time.Second), TimedOut) {
 		t.Fatal("Should have failed")
 	}
 
 	// Now let's confirm that WaitTimeout returns correct error
-	b = baseToken{complete: make(chan struct{})}
+	b = baseToken{ctx: ctx, complete: make(chan struct{})}
 	testError := errors.New("test")
 	go func(bt *baseToken) {
 		bt.setError(testError)
