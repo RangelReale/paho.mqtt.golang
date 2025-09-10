@@ -1505,7 +1505,7 @@ func Test_ResumeSubsWithReconnect(t *testing.T) {
 	}
 
 	// Send subscription request and then immediately force disconnect (hope it will happen before sub sent)
-	subToken := newToken(packets.Subscribe).(*SubscribeToken)
+	subToken := newToken(ctx, packets.Subscribe).(*SubscribeToken)
 	sub := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 	sub.Topics = append(sub.Topics, topic)
 	sub.Qoss = append(sub.Qoss, qos)

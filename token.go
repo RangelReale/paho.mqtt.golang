@@ -17,6 +17,7 @@
 package mqtt
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -68,6 +69,7 @@ type tokenCompletor interface {
 }
 
 type baseToken struct {
+	ctx      context.Context
 	m        sync.RWMutex
 	complete chan struct{}
 	err      error
@@ -75,8 +77,12 @@ type baseToken struct {
 
 // Wait implements the Token Wait method.
 func (b *baseToken) Wait() bool {
-	<-b.complete
-	return true
+	select {
+	case <-b.ctx.Done():
+		return false
+	case <-b.complete:
+		return true
+	}
 }
 
 // WaitTimeout implements the Token WaitTimeout method.
@@ -88,6 +94,7 @@ func (b *baseToken) WaitTimeout(d time.Duration) bool {
 			<-timer.C
 		}
 		return true
+	case <-b.ctx.Done():
 	case <-timer.C:
 	}
 
@@ -120,18 +127,18 @@ func (b *baseToken) setError(e error) {
 	b.m.Unlock()
 }
 
-func newToken(tType byte) tokenCompletor {
+func newToken(ctx context.Context, tType byte) tokenCompletor {
 	switch tType {
 	case packets.Connect:
-		return &ConnectToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &ConnectToken{baseToken: baseToken{ctx: ctx, complete: make(chan struct{})}}
 	case packets.Subscribe:
-		return &SubscribeToken{baseToken: baseToken{complete: make(chan struct{})}, subResult: make(map[string]byte)}
+		return &SubscribeToken{baseToken: baseToken{ctx: ctx, complete: make(chan struct{})}, subResult: make(map[string]byte)}
 	case packets.Publish:
-		return &PublishToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &PublishToken{baseToken: baseToken{ctx: ctx, complete: make(chan struct{})}}
 	case packets.Unsubscribe:
-		return &UnsubscribeToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &UnsubscribeToken{baseToken: baseToken{ctx: ctx, complete: make(chan struct{})}}
 	case packets.Disconnect:
-		return &DisconnectToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &DisconnectToken{baseToken: baseToken{ctx: ctx, complete: make(chan struct{})}}
 	}
 	return nil
 }

@@ -227,7 +227,7 @@ var ErrNotConnected = errors.New("not Connected")
 // routes (or a DefaultPublishHandler) prior to calling Connect()
 // because queued messages may be delivered immediately post connection
 func (c *client) Connect(ctx context.Context) Token {
-	t := newToken(packets.Connect).(*ConnectToken)
+	t := newToken(ctx, packets.Connect).(*ConnectToken)
 	DEBUG.Println(CLI, "Connect()")
 
 	connectionUp, err := c.status.Connecting()
@@ -455,7 +455,7 @@ func (c *client) Disconnect(ctx context.Context, quiesce uint) {
 		}()
 		DEBUG.Println(CLI, "disconnecting")
 		dm := packets.NewControlPacket(packets.Disconnect).(*packets.DisconnectPacket)
-		dt := newToken(packets.Disconnect)
+		dt := newToken(ctx, packets.Disconnect)
 		select {
 		case c.oboundP <- withContext(ctx, &PacketAndToken{p: dm, t: dt}):
 			// wait for work to finish, or quiesce time consumed
@@ -746,7 +746,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 // to the specified topic.
 // Returns a token to track delivery of the message to the broker
 func (c *client) Publish(ctx context.Context, topic string, qos byte, retained bool, payload interface{}) Token {
-	token := newToken(packets.Publish).(*PublishToken)
+	token := newToken(ctx, packets.Publish).(*PublishToken)
 	DEBUG.Println(CLI, "enter Publish")
 	switch {
 	case !c.IsConnected():
@@ -817,7 +817,7 @@ func (c *client) Publish(ctx context.Context, topic string, qos byte, retained b
 // a new go routine.
 // callback must be safe for concurrent use by multiple goroutines.
 func (c *client) Subscribe(ctx context.Context, topic string, qos byte, callback MessageHandler) Token {
-	token := newToken(packets.Subscribe).(*SubscribeToken)
+	token := newToken(ctx, packets.Subscribe).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter Subscribe")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
@@ -903,7 +903,7 @@ func (c *client) Subscribe(ctx context.Context, topic string, qos byte, callback
 // callback must be safe for concurrent use by multiple goroutines.
 func (c *client) SubscribeMultiple(ctx context.Context, filters map[string]byte, callback MessageHandler) Token {
 	var err error
-	token := newToken(packets.Subscribe).(*SubscribeToken)
+	token := newToken(ctx, packets.Subscribe).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter SubscribeMultiple")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
@@ -1045,7 +1045,7 @@ func (c *client) resume(ctx context.Context, subscription bool, ibound chan pack
 				if subscription {
 					DEBUG.Println(STR, fmt.Sprintf("loaded pending subscribe (%d)", details.MessageID))
 					subPacket := packet.(*packets.SubscribePacket)
-					token := newToken(packets.Subscribe).(*SubscribeToken)
+					token := newToken(ctx, packets.Subscribe).(*SubscribeToken)
 					token.messageID = details.MessageID
 					token.subs = append(token.subs, subPacket.Topics...)
 					c.claimID(token, details.MessageID)
@@ -1061,7 +1061,7 @@ func (c *client) resume(ctx context.Context, subscription bool, ibound chan pack
 			case *packets.UnsubscribePacket:
 				if subscription {
 					DEBUG.Println(STR, fmt.Sprintf("loaded pending unsubscribe (%d)", details.MessageID))
-					token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
+					token := newToken(ctx, packets.Unsubscribe).(*UnsubscribeToken)
 					select {
 					case c.oboundP <- withContext(ctx, &PacketAndToken{p: packet, t: token}):
 					case <-c.stop:
@@ -1089,7 +1089,7 @@ func (c *client) resume(ctx context.Context, subscription bool, ibound chan pack
 				if p.Qos != 0 { // spec: The DUP flag MUST be set to 0 for all QoS 0 messages
 					p.Dup = true
 				}
-				token := newToken(packets.Publish).(*PublishToken)
+				token := newToken(ctx, packets.Publish).(*PublishToken)
 				token.messageID = details.MessageID
 				c.claimID(token, details.MessageID)
 				DEBUG.Println(STR, fmt.Sprintf("loaded pending publish (%d)", details.MessageID))
@@ -1129,7 +1129,7 @@ func (c *client) resume(ctx context.Context, subscription bool, ibound chan pack
 // Messages published to those topics from other clients will no longer be
 // received.
 func (c *client) Unsubscribe(ctx context.Context, topics ...string) Token {
-	token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
+	token := newToken(ctx, packets.Unsubscribe).(*UnsubscribeToken)
 	DEBUG.Println(CLI, "enter Unsubscribe")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
