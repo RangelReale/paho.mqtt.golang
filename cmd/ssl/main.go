@@ -45,6 +45,7 @@ must be created:
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -95,12 +96,14 @@ func NewTLSConfig() *tls.Config {
 	}
 }
 
-var f MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
+var f MQTT.MessageHandler = func(ctx context.Context, client MQTT.Client, msg MQTT.Message) {
 	fmt.Printf("TOPIC: %s\n", msg.Topic())
 	fmt.Printf("MSG: %s\n", msg.Payload())
 }
 
 func main() {
+	ctx := context.Background()
+
 	tlsconfig := NewTLSConfig()
 
 	opts := MQTT.NewClientOptions()
@@ -110,11 +113,11 @@ func main() {
 
 	// Start the connection
 	c := MQTT.NewClient(opts)
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
 
-	c.Subscribe("/go-mqtt/sample", 0, nil)
+	c.Subscribe(ctx, "/go-mqtt/sample", 0, nil)
 
 	i := 0
 	for range time.Tick(time.Duration(1) * time.Second) {
@@ -122,9 +125,9 @@ func main() {
 			break
 		}
 		text := fmt.Sprintf("this is msg #%d!", i)
-		c.Publish("/go-mqtt/sample", 0, false, text)
+		c.Publish(ctx, "/go-mqtt/sample", 0, false, text)
 		i++
 	}
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }

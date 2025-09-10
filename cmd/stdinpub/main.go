@@ -20,6 +20,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -33,6 +34,8 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
 	// MQTT.DEBUG = log.New(os.Stdout, "", 0)
 	// MQTT.ERROR = log.New(os.Stdout, "", 0)
 	stdin := bufio.NewReader(os.Stdin)
@@ -58,7 +61,7 @@ func main() {
 	connOpts.SetTLSConfig(tlsConfig)
 
 	client := MQTT.NewClient(connOpts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
+	if token := client.Connect(ctx); token.Wait() && token.Error() != nil {
 		fmt.Println(token.Error())
 		return
 	}
@@ -69,6 +72,6 @@ func main() {
 		if err == io.EOF {
 			os.Exit(0)
 		}
-		client.Publish(*topic, byte(*qos), *retained, message)
+		client.Publish(ctx, *topic, byte(*qos), *retained, message)
 	}
 }

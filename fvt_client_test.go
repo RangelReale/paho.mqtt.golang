@@ -33,18 +33,20 @@ import (
 )
 
 func Test_Start(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions().SetClientID("Start").AddBroker(FVTTCP)
 	c := NewClient(ops)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
 	// Disconnect should return within 250ms and calling a second time should not block
 	disconnectC := make(chan struct{}, 1)
 	go func() {
-		c.Disconnect(250)
-		c.Disconnect(5)
+		c.Disconnect(ctx, 250)
+		c.Disconnect(ctx, 5)
 		close(disconnectC)
 	}()
 
@@ -115,20 +117,22 @@ func Test_Start(t *testing.T) {
 // This is triggered by issue #501; there is a very slight chance that Disconnect could get through the
 // `status == connected` check and then the connection drops...
 func Test_Disconnect(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions().SetClientID("Disconnect").AddBroker(FVTTCP)
 	c := NewClient(ops)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
 	// Attempt to disconnect twice simultaneously and ensure this does not block
 	disconnectC := make(chan struct{}, 1)
 	go func() {
-		c.Disconnect(250)
+		c.Disconnect(ctx, 250)
 		cli := c.(*client)
 		cli.status.forceConnectionStatus(connected)
-		c.Disconnect(250)
+		c.Disconnect(ctx, 250)
 		close(disconnectC)
 	}()
 
@@ -140,75 +144,85 @@ func Test_Disconnect(t *testing.T) {
 }
 
 func Test_Publish_1(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("Publish_1")
 
 	c := NewClient(ops)
-	token := c.Connect()
+	token := c.Connect(ctx)
 	if token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	c.Publish("test/Publish", 0, false, "Publish qo0")
+	c.Publish(ctx, "test/Publish", 0, false, "Publish qo0")
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_Publish_2(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("Publish_2")
 
 	c := NewClient(ops)
-	token := c.Connect()
+	token := c.Connect(ctx)
 	if token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	c.Publish("/test/Publish", 0, false, "Publish1 qos0")
-	c.Publish("/test/Publish", 0, false, "Publish2 qos0")
+	c.Publish(ctx, "/test/Publish", 0, false, "Publish1 qos0")
+	c.Publish(ctx, "/test/Publish", 0, false, "Publish2 qos0")
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_Publish_3(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("Publish_3")
 
 	c := NewClient(ops)
-	token := c.Connect()
+	token := c.Connect(ctx)
 	if token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	c.Publish("/test/Publish", 0, false, "Publish1 qos0")
-	c.Publish("/test/Publish", 1, false, "Publish2 qos1")
-	c.Publish("/test/Publish", 2, false, "Publish2 qos2")
+	c.Publish(ctx, "/test/Publish", 0, false, "Publish1 qos0")
+	c.Publish(ctx, "/test/Publish", 1, false, "Publish2 qos1")
+	c.Publish(ctx, "/test/Publish", 2, false, "Publish2 qos2")
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_Publish_BytesBuffer(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("Publish_BytesBuffer")
 
 	c := NewClient(ops)
-	token := c.Connect()
+	token := c.Connect(ctx)
 	if token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
 	payload := bytes.NewBufferString("Publish qos0")
 
-	c.Publish("test/Publish", 0, false, payload)
+	c.Publish(ctx, "test/Publish", 0, false, payload)
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_Subscribe(t *testing.T) {
+	ctx := context.Background()
+
 	pops := NewClientOptions()
 	pops.AddBroker(FVTTCP)
 	pops.SetClientID("Subscribe_tx")
@@ -217,38 +231,40 @@ func Test_Subscribe(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("Subscribe_rx")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 	}
 	sops.SetDefaultPublishHandler(f)
 	s := NewClient(sops)
 
-	sToken := s.Connect()
+	sToken := s.Connect(ctx)
 	if sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", sToken.Error())
 	}
 
-	s.Subscribe("/test/sub", 0, nil)
+	s.Subscribe(ctx, "/test/sub", 0, nil)
 
-	pToken := p.Connect()
+	pToken := p.Connect(ctx)
 	if pToken.Wait() && pToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", pToken.Error())
 	}
 
-	p.Publish("/test/sub", 0, false, "Publish qos0")
+	p.Publish(ctx, "/test/sub", 0, false, "Publish qos0")
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 func Test_Will(t *testing.T) {
+	ctx := context.Background()
+
 	willmsgc := make(chan string, 1)
 
 	sops := NewClientOptions().AddBroker(FVTTCP)
 	sops.SetClientID("will-giver")
 	sops.SetWill("/wills", "good-byte!", 0, false)
-	sops.SetConnectionLostHandler(func(client Client, err error) {
+	sops.SetConnectionLostHandler(func(ctx context.Context, client Client, err error) {
 		fmt.Println("OnConnectionLost!")
 	})
 	sops.SetAutoReconnect(false)
@@ -257,7 +273,7 @@ func Test_Will(t *testing.T) {
 	wops := NewClientOptions()
 	wops.AddBroker(FVTTCP)
 	wops.SetClientID("will-subscriber")
-	wops.SetDefaultPublishHandler(func(client Client, msg Message) {
+	wops.SetDefaultPublishHandler(func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		willmsgc <- string(msg.Payload())
@@ -265,33 +281,35 @@ func Test_Will(t *testing.T) {
 	wops.SetAutoReconnect(false)
 	wsub := NewClient(wops)
 
-	if wToken := wsub.Connect(); wToken.Wait() && wToken.Error() != nil {
+	if wToken := wsub.Connect(ctx); wToken.Wait() && wToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", wToken.Error())
 	}
 
-	if wsubToken := wsub.Subscribe("/wills", 0, nil); wsubToken.Wait() && wsubToken.Error() != nil {
+	if wsubToken := wsub.Subscribe(ctx, "/wills", 0, nil); wsubToken.Wait() && wsubToken.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", wsubToken.Error())
 	}
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	c.forceDisconnect()
+	c.forceDisconnect(ctx)
 
 	if <-willmsgc != "good-byte!" {
 		t.Fatalf("will message did not have correct payload")
 	}
 
-	wsub.Disconnect(250)
+	wsub.Disconnect(ctx, 250)
 }
 
 func Test_CleanSession(t *testing.T) {
+	ctx := context.Background()
+
 	clsnc := make(chan string, 1)
 
 	sops := NewClientOptions().AddBroker(FVTTCP)
 	sops.SetClientID("clsn-sender")
-	sops.SetConnectionLostHandler(func(client Client, err error) {
+	sops.SetConnectionLostHandler(func(ctx context.Context, client Client, err error) {
 		fmt.Println("OnConnectionLost!")
 	})
 	sops.SetAutoReconnect(false)
@@ -301,7 +319,7 @@ func Test_CleanSession(t *testing.T) {
 	wops.AddBroker(FVTTCP)
 	wops.SetClientID("clsn-tester")
 	wops.SetCleanSession(false)
-	wops.SetDefaultPublishHandler(func(client Client, msg Message) {
+	wops.SetDefaultPublishHandler(func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		clsnc <- string(msg.Payload())
@@ -309,29 +327,29 @@ func Test_CleanSession(t *testing.T) {
 	wops.SetAutoReconnect(false)
 	wsub := NewClient(wops)
 
-	if wToken := wsub.Connect(); wToken.Wait() && wToken.Error() != nil {
+	if wToken := wsub.Connect(ctx); wToken.Wait() && wToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", wToken.Error())
 	}
 
-	if wsubToken := wsub.Subscribe("clean", 1, nil); wsubToken.Wait() && wsubToken.Error() != nil {
+	if wsubToken := wsub.Subscribe(ctx, "clean", 1, nil); wsubToken.Wait() && wsubToken.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", wsubToken.Error())
 	}
 
-	wsub.Disconnect(250)
+	wsub.Disconnect(ctx, 250)
 	time.Sleep(2 * time.Second)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if pToken := c.Publish("clean", 1, false, "clean!"); pToken.Wait() && pToken.Error() != nil {
+	if pToken := c.Publish(ctx, "clean", 1, false, "clean!"); pToken.Wait() && pToken.Error() != nil {
 		t.Fatalf("Error on Client.Publish(): %v", pToken.Error())
 	}
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 
 	wsub = NewClient(wops)
-	if wToken := wsub.Connect(); wToken.Wait() && wToken.Error() != nil {
+	if wToken := wsub.Connect(ctx); wToken.Wait() && wToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", wToken.Error())
 	}
 
@@ -344,19 +362,21 @@ func Test_CleanSession(t *testing.T) {
 		t.Fatalf("failed to receive publish")
 	}
 
-	wsub.Disconnect(250)
+	wsub.Disconnect(ctx, 250)
 
 	wops.SetCleanSession(true)
 
 	wsub = NewClient(wops)
-	if wToken := wsub.Connect(); wToken.Wait() && wToken.Error() != nil {
+	if wToken := wsub.Connect(ctx); wToken.Wait() && wToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", wToken.Error())
 	}
 
-	wsub.Disconnect(250)
+	wsub.Disconnect(ctx, 250)
 }
 
 func Test_Binary_Will(t *testing.T) {
+	ctx := context.Background()
+
 	willmsgc := make(chan []byte, 1)
 	will := []byte{
 		0xDE,
@@ -368,14 +388,14 @@ func Test_Binary_Will(t *testing.T) {
 	sops := NewClientOptions().AddBroker(FVTTCP)
 	sops.SetClientID("will-giver")
 	sops.SetBinaryWill("/wills", will, 0, false)
-	sops.SetConnectionLostHandler(func(client Client, err error) {
+	sops.SetConnectionLostHandler(func(ctx context.Context, client Client, err error) {
 	})
 	sops.SetAutoReconnect(false)
 	c := NewClient(sops).(*client)
 
 	wops := NewClientOptions().AddBroker(FVTTCP)
 	wops.SetClientID("will-subscriber")
-	wops.SetDefaultPublishHandler(func(client Client, msg Message) {
+	wops.SetDefaultPublishHandler(func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %v\n", msg.Payload())
 		willmsgc <- msg.Payload()
@@ -383,25 +403,25 @@ func Test_Binary_Will(t *testing.T) {
 	wops.SetAutoReconnect(false)
 	wsub := NewClient(wops)
 
-	if wToken := wsub.Connect(); wToken.Wait() && wToken.Error() != nil {
+	if wToken := wsub.Connect(ctx); wToken.Wait() && wToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", wToken.Error())
 	}
 
-	if wsubToken := wsub.Subscribe("/wills", 0, nil); wsubToken.Wait() && wsubToken.Error() != nil {
+	if wsubToken := wsub.Subscribe(ctx, "/wills", 0, nil); wsubToken.Wait() && wsubToken.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe() %v", wsubToken.Error())
 	}
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	c.forceDisconnect()
+	c.forceDisconnect(ctx)
 
 	if !bytes.Equal(<-willmsgc, will) {
 		t.Fatalf("will message did not have correct payload")
 	}
 
-	wsub.Disconnect(250)
+	wsub.Disconnect(ctx, 250)
 }
 
 /**
@@ -423,6 +443,8 @@ func wait(c chan bool) {
 // Pub 0, Sub 0
 
 func Test_p0s0(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p0s0"
 	choke := make(chan bool)
 
@@ -434,7 +456,7 @@ func Test_p0s0(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p0s0-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -443,33 +465,35 @@ func Test_p0s0(t *testing.T) {
 
 	s := NewClient(sops)
 
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 0, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 0, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 0, false, "p0s0 payload 1")
-	p.Publish(topic, 0, false, "p0s0 payload 2")
+	p.Publish(ctx, topic, 0, false, "p0s0 payload 1")
+	p.Publish(ctx, topic, 0, false, "p0s0 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 0, false, "p0s0 payload 3")
+	p.Publish(ctx, topic, 0, false, "p0s0 payload 3")
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 0, Sub 1
 
 func Test_p0s1(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p0s1"
 	choke := make(chan bool)
 
@@ -481,7 +505,7 @@ func Test_p0s1(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p0s1-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -489,33 +513,35 @@ func Test_p0s1(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 1, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 0, false, "p0s1 payload 1")
-	p.Publish(topic, 0, false, "p0s1 payload 2")
+	p.Publish(ctx, topic, 0, false, "p0s1 payload 1")
+	p.Publish(ctx, topic, 0, false, "p0s1 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 0, false, "p0s1 payload 3")
+	p.Publish(ctx, topic, 0, false, "p0s1 payload 3")
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 0, Sub 2
 
 func Test_p0s2(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p0s2"
 	choke := make(chan bool)
 
@@ -527,7 +553,7 @@ func Test_p0s2(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p0s2-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -535,34 +561,36 @@ func Test_p0s2(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 2, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 2, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 0, false, "p0s2 payload 1")
-	p.Publish(topic, 0, false, "p0s2 payload 2")
+	p.Publish(ctx, topic, 0, false, "p0s2 payload 1")
+	p.Publish(ctx, topic, 0, false, "p0s2 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 0, false, "p0s2 payload 3")
+	p.Publish(ctx, topic, 0, false, "p0s2 payload 3")
 
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 1, Sub 0
 
 func Test_p1s0(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p1s0"
 	choke := make(chan bool)
 
@@ -574,7 +602,7 @@ func Test_p1s0(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p1s0-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -582,34 +610,36 @@ func Test_p1s0(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 0, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 0, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 1, false, "p1s0 payload 1")
-	p.Publish(topic, 1, false, "p1s0 payload 2")
+	p.Publish(ctx, topic, 1, false, "p1s0 payload 1")
+	p.Publish(ctx, topic, 1, false, "p1s0 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 1, false, "p1s0 payload 3")
+	p.Publish(ctx, topic, 1, false, "p1s0 payload 3")
 
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 1, Sub 1
 
 func Test_p1s1(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p1s1"
 	choke := make(chan bool)
 
@@ -621,7 +651,7 @@ func Test_p1s1(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p1s1-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -629,33 +659,35 @@ func Test_p1s1(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 1, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 1, false, "p1s1 payload 1")
-	p.Publish(topic, 1, false, "p1s1 payload 2")
+	p.Publish(ctx, topic, 1, false, "p1s1 payload 1")
+	p.Publish(ctx, topic, 1, false, "p1s1 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 1, false, "p1s1 payload 3")
+	p.Publish(ctx, topic, 1, false, "p1s1 payload 3")
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 1, Sub 2
 
 func Test_p1s2(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p1s2"
 	choke := make(chan bool)
 
@@ -667,7 +699,7 @@ func Test_p1s2(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p1s2-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -675,34 +707,36 @@ func Test_p1s2(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 2, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 2, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 1, false, "p1s2 payload 1")
-	p.Publish(topic, 1, false, "p1s2 payload 2")
+	p.Publish(ctx, topic, 1, false, "p1s2 payload 1")
+	p.Publish(ctx, topic, 1, false, "p1s2 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 1, false, "p1s2 payload 3")
+	p.Publish(ctx, topic, 1, false, "p1s2 payload 3")
 
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 2, Sub 0
 
 func Test_p2s0(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p2s0"
 	choke := make(chan bool)
 
@@ -714,7 +748,7 @@ func Test_p2s0(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p2s0-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -722,32 +756,34 @@ func Test_p2s0(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 0, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 0, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 2, false, "p2s0 payload 1")
-	p.Publish(topic, 2, false, "p2s0 payload 2")
+	p.Publish(ctx, topic, 2, false, "p2s0 payload 1")
+	p.Publish(ctx, topic, 2, false, "p2s0 payload 2")
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 2, false, "p2s0 payload 3")
+	p.Publish(ctx, topic, 2, false, "p2s0 payload 3")
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 2, Sub 1
 
 func Test_p2s1(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p2s1"
 	choke := make(chan bool)
 
@@ -759,7 +795,7 @@ func Test_p2s1(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p2s1-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -767,34 +803,36 @@ func Test_p2s1(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 1, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 2, false, "p2s1 payload 1")
-	p.Publish(topic, 2, false, "p2s1 payload 2")
+	p.Publish(ctx, topic, 2, false, "p2s1 payload 1")
+	p.Publish(ctx, topic, 2, false, "p2s1 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 2, false, "p2s1 payload 3")
+	p.Publish(ctx, topic, 2, false, "p2s1 payload 3")
 
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Pub 2, Sub 2
 
 func Test_p2s2(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/p2s2"
 	choke := make(chan bool)
 
@@ -806,7 +844,7 @@ func Test_p2s2(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("p2s2-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		choke <- true
@@ -814,32 +852,34 @@ func Test_p2s2(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 2, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 2, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
-	p.Publish(topic, 2, false, "p2s2 payload 1")
-	p.Publish(topic, 2, false, "p2s2 payload 2")
+	p.Publish(ctx, topic, 2, false, "p2s2 payload 1")
+	p.Publish(ctx, topic, 2, false, "p2s2 payload 2")
 
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 2, false, "p2s2 payload 3")
+	p.Publish(ctx, topic, 2, false, "p2s2 payload 3")
 
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 func Test_PublishMessage(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/pubmsg"
 	choke := make(chan bool)
 
@@ -851,7 +891,7 @@ func Test_PublishMessage(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("pubmsg-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		if string(msg.Payload()) != "pubmsg payload" {
@@ -863,32 +903,34 @@ func Test_PublishMessage(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 2, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 2, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
 	text := "pubmsg payload"
-	p.Publish(topic, 0, false, text)
-	p.Publish(topic, 0, false, text)
+	p.Publish(ctx, topic, 0, false, text)
+	p.Publish(ctx, topic, 0, false, text)
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 0, false, text)
+	p.Publish(ctx, topic, 0, false, text)
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 func Test_PublishEmptyMessage(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/pubmsgempty"
 	choke := make(chan bool)
 
@@ -900,7 +942,7 @@ func Test_PublishEmptyMessage(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("pubmsgempty-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 		if string(msg.Payload()) != "" {
@@ -911,34 +953,36 @@ func Test_PublishEmptyMessage(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if sToken := s.Connect(); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Connect(ctx); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", sToken.Error())
 	}
 
-	if sToken := s.Subscribe(topic, 2, nil); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Subscribe(ctx, topic, 2, nil); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", sToken.Error())
 	}
 
-	if pToken := p.Connect(); pToken.Wait() && pToken.Error() != nil {
+	if pToken := p.Connect(ctx); pToken.Wait() && pToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", pToken.Error())
 	}
 
-	p.Publish(topic, 0, false, "")
-	p.Publish(topic, 0, false, "")
+	p.Publish(ctx, topic, 0, false, "")
+	p.Publish(ctx, topic, 0, false, "")
 	wait(choke)
 	wait(choke)
 
-	p.Publish(topic, 0, false, "")
+	p.Publish(ctx, topic, 0, false, "")
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Test_CallbackOverrun - When ordermatters=false the callbacks are called within a go routine. It is possible that
 // the connection will drop before the handler completes and this should result in the ACK being dropped silently
 // (leads to a panic in v1.3-v1.3.4)
 func Test_CallbackOverrun(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/callbackoverrun"
 	handlerCalled := make(chan bool)
 	handlerChoke := make(chan bool)
@@ -954,7 +998,7 @@ func Test_CallbackOverrun(t *testing.T) {
 	sops.AddBroker(FVTTCP)
 	sops.SetOrderMatters(false)
 	sops.SetClientID("callbackoverrun-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		handlerCalled <- true
 		<-handlerChoke // Wait until connection has been closed
 		if string(msg.Payload()) != "test message" {
@@ -965,23 +1009,23 @@ func Test_CallbackOverrun(t *testing.T) {
 	}
 
 	s := NewClient(sops).(*client)
-	if sToken := s.Connect(); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Connect(ctx); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", sToken.Error())
 	}
 
-	if sToken := s.Subscribe(topic, 1, f); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Subscribe(ctx, topic, 1, f); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", sToken.Error())
 	}
 
-	if pToken := p.Connect(); pToken.Wait() && pToken.Error() != nil {
+	if pToken := p.Connect(ctx); pToken.Wait() && pToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", pToken.Error())
 	}
 
-	p.Publish(topic, 1, false, "test message")
-	wait(handlerCalled)  // Wait until the handler has been called
-	s.Disconnect(250)    // Ensure the connection is dropped
-	<-s.commsStopped     // Double check...
-	handlerChoke <- true // Allow handler to proceed
+	p.Publish(ctx, topic, 1, false, "test message")
+	wait(handlerCalled)    // Wait until the handler has been called
+	s.Disconnect(ctx, 250) // Ensure the connection is dropped
+	<-s.commsStopped       // Double check...
+	handlerChoke <- true   // Allow handler to proceed
 
 	err := <-handlerError
 	if err != nil {
@@ -991,12 +1035,12 @@ func Test_CallbackOverrun(t *testing.T) {
 	time.Sleep(time.Microsecond) // Allow a little time in case the handler returning after connection dropped causes an issue (panic)
 	fmt.Println("reconnecting")
 	// Now attempt to reconnect (checking for blockages)
-	if sToken := s.Connect(); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Connect(ctx); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", sToken.Error())
 	}
 
-	s.Disconnect(250)
-	p.Disconnect(250)
+	s.Disconnect(ctx, 250)
+	p.Disconnect(ctx, 250)
 }
 
 // func Test_Cleanstore(t *testing.T) {
@@ -1067,6 +1111,8 @@ func Test_CallbackOverrun(t *testing.T) {
 // }
 
 func Test_MultipleURLs(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker("tcp://127.0.0.1:10000")
 	ops.AddBroker(FVTTCP)
@@ -1074,66 +1120,72 @@ func Test_MultipleURLs(t *testing.T) {
 
 	c := NewClient(ops)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if pToken := c.Publish("/test/MultiURL", 0, false, "Publish qo0"); pToken.Wait() && pToken.Error() != nil {
+	if pToken := c.Publish(ctx, "/test/MultiURL", 0, false, "Publish qo0"); pToken.Wait() && pToken.Error() != nil {
 		t.Fatalf("Error on Client.Publish(): %v", pToken.Error())
 	}
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 // A test to make sure ping mechanism is working
 func Test_ping1_idle5(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("p3i10")
-	ops.SetConnectionLostHandler(func(c Client, err error) {
+	ops.SetConnectionLostHandler(func(ctx context.Context, c Client, err error) {
 		t.Fatalf("Connection-lost handler was called: %s", err)
 	})
 	ops.SetKeepAlive(4 * time.Second)
 
 	c := NewClient(ops)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 	time.Sleep(8 * time.Second)
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_autoreconnect(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("auto_reconnect")
 	ops.SetAutoReconnect(true)
-	ops.SetOnConnectHandler(func(c Client) {
+	ops.SetOnConnectHandler(func(ctx context.Context, c Client) {
 		t.Log("Connected")
 	})
 	ops.SetKeepAlive(2 * time.Second)
 
 	c := NewClient(ops)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
 	time.Sleep(5 * time.Second)
 
 	fmt.Println("Breaking connection")
-	c.(*client).internalConnLost(fmt.Errorf("autoreconnect test"))
+	c.(*client).internalConnLost(ctx, fmt.Errorf("autoreconnect test"))
 
 	time.Sleep(5 * time.Second)
 	if !c.IsConnected() {
 		t.Fail()
 	}
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_cleanUpMids(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("auto_reconnect")
@@ -1143,18 +1195,18 @@ func Test_cleanUpMids(t *testing.T) {
 
 	c := NewClient(ops)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	token := c.Publish("/test/cleanUP", 2, false, "cleanup test")
+	token := c.Publish(ctx, "/test/cleanUP", 2, false, "cleanup test")
 	c.(*client).messageIds.mu.Lock()
 	fmt.Println("Breaking connection", len(c.(*client).messageIds.index))
 	if len(c.(*client).messageIds.index) == 0 {
 		t.Fatalf("Should be a token in the messageIDs, none found")
 	}
 	c.(*client).messageIds.mu.Unlock()
-	c.(*client).internalConnLost(fmt.Errorf("cleanup test"))
+	c.(*client).internalConnLost(ctx, fmt.Errorf("cleanup test"))
 
 	time.Sleep(1 * time.Second)
 	if !c.IsConnected() {
@@ -1179,11 +1231,13 @@ func Test_cleanUpMids(t *testing.T) {
 	// }
 	fmt.Println(token.Error())
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 // Test that cleanup happens properly on explicit Disconnect()
 func Test_cleanUpMids_2(t *testing.T) {
+	ctx := context.Background()
+
 	ops := NewClientOptions()
 	ops.AddBroker(FVTTCP)
 	ops.SetClientID("auto_reconnect")
@@ -1194,11 +1248,11 @@ func Test_cleanUpMids_2(t *testing.T) {
 	c := NewClient(ops)
 	cl := c.(*client)
 
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	token := c.Publish("/test/cleanUP", 2, false, "cleanup test 2")
+	token := c.Publish(ctx, "/test/cleanUP", 2, false, "cleanup test 2")
 	cl.messageIds.mu.Lock()
 	mq := len(c.(*client).messageIds.index)
 	cl.messageIds.mu.Unlock()
@@ -1206,7 +1260,7 @@ func Test_cleanUpMids_2(t *testing.T) {
 		t.Fatalf("Should be a token in the messageIDs, none found")
 	}
 	// fmt.Println("Disconnecting", len(cl.messageIds.index))
-	c.Disconnect(0)
+	c.Disconnect(ctx, 0)
 
 	fmt.Println("Wait on Token")
 	// We should be able to wait on this token without any issue
@@ -1225,11 +1279,13 @@ func Test_cleanUpMids_2(t *testing.T) {
 }
 
 func Test_ConnectRetry(t *testing.T) {
+	ctx := context.Background()
+
 	// Connect for publish - initially use invalid server
 	cops := NewClientOptions().AddBroker("256.256.256.256").SetClientID("cr-pub").
 		SetConnectRetry(true).SetConnectRetryInterval(time.Second / 2)
 	c := NewClient(cops).(*client)
-	connectToken := c.Connect()
+	connectToken := c.Connect(ctx)
 
 	time.Sleep(time.Second) // Wait a second to ensure we are past SetConnectRetryInterval
 	if connectToken.Error() != nil {
@@ -1241,17 +1297,19 @@ func Test_ConnectRetry(t *testing.T) {
 	if connectToken.Wait() && connectToken.Error() != nil {
 		t.Fatalf("Error connecting after valid broker added: %v", connectToken.Error())
 	}
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 func Test_ConnectRetryPublish(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/connectRetry"
 	payload := "sample Payload"
 	choke := make(chan bool)
 
 	// subscribe to topic and wait for expected message (only received after connection successful)
 	sops := NewClientOptions().AddBroker(FVTTCP).SetClientID("crp-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		if msg.Topic() != topic || string(msg.Payload()) != payload {
 			t.Fatalf("Received unexpected message: %v, %v", msg.Topic(), msg.Payload())
 		}
@@ -1260,11 +1318,11 @@ func Test_ConnectRetryPublish(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(topic, 0, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, topic, 0, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
@@ -1274,8 +1332,8 @@ func Test_ConnectRetryPublish(t *testing.T) {
 	pops := NewClientOptions().AddBroker("256.256.256.256").SetClientID("crp-pub").
 		SetStore(memStore).SetConnectRetry(true).SetConnectRetryInterval(time.Second / 2)
 	p := NewClient(pops).(*client)
-	connectToken := p.Connect()
-	p.Publish(topic, 1, false, payload)
+	connectToken := p.Connect(ctx)
+	p.Publish(ctx, topic, 1, false, payload)
 	// Check publish packet in the memorystore
 	ids := memStore.All()
 	if len(ids) == 0 {
@@ -1306,12 +1364,12 @@ func Test_ConnectRetryPublish(t *testing.T) {
 	memStore2.Put(ids[0], packet)
 
 	// disconnect and then reconnect with correct server
-	p.Disconnect(250)
+	p.Disconnect(ctx, 250)
 
 	pops = NewClientOptions().AddBroker(FVTTCP).SetClientID("crp-pub").SetCleanSession(false).
 		SetStore(memStore2).SetConnectRetry(true).SetConnectRetryInterval(time.Second / 2)
 	p = NewClient(pops).(*client)
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on valid Publish.Connect(): %v", token.Error())
 	}
 
@@ -1320,12 +1378,14 @@ func Test_ConnectRetryPublish(t *testing.T) {
 	}
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 	memStore.Close()
 }
 
 func Test_ResumeSubs(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/ResumeSubs"
 	var qos byte = 1
 
@@ -1336,8 +1396,8 @@ func Test_ResumeSubs(t *testing.T) {
 		SetConnectRetryInterval(time.Second / 2).SetResumeSubs(true).SetStore(subMemStore)
 
 	s := NewClient(sops)
-	sConnToken := s.Connect()
-	subToken := s.Subscribe(topic, qos, nil) // Message should be stored before this returns
+	sConnToken := s.Connect(ctx)
+	subToken := s.Subscribe(ctx, topic, qos, nil) // Message should be stored before this returns
 
 	// Verify subscribe packet exists in the memory store
 	ids := subMemStore.All()
@@ -1371,7 +1431,7 @@ func Test_ResumeSubs(t *testing.T) {
 	subMemStore2.Open()
 	subMemStore2.Put(ids[0], packet)
 
-	s.Disconnect(250)
+	s.Disconnect(ctx, 250)
 
 	// Connect to broker and test that subscription was resumed
 	sops = NewClientOptions().AddBroker(FVTTCP).SetClientID("resumesubs-sub").
@@ -1379,12 +1439,12 @@ func Test_ResumeSubs(t *testing.T) {
 		SetConnectRetryInterval(time.Second / 2)
 
 	msgChan := make(chan Message)
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		msgChan <- msg
 	}
 	sops.SetDefaultPublishHandler(f)
 	s = NewClient(sops).(*client)
-	if sConnToken = s.Connect(); sConnToken.Wait() && sConnToken.Error() != nil {
+	if sConnToken = s.Connect(ctx); sConnToken.Wait() && sConnToken.Error() != nil {
 		t.Fatalf("Error on valid subscribe Connect(): %v", sConnToken.Error())
 	}
 
@@ -1392,12 +1452,12 @@ func Test_ResumeSubs(t *testing.T) {
 	pops := NewClientOptions().AddBroker(FVTTCP).SetClientID("resumesubs-pub").SetCleanSession(true).
 		SetConnectRetry(true).SetConnectRetryInterval(time.Second / 2)
 	p := NewClient(pops).(*client)
-	if pConnToken := p.Connect(); pConnToken.Wait() && pConnToken.Error() != nil {
+	if pConnToken := p.Connect(ctx); pConnToken.Wait() && pConnToken.Error() != nil {
 		t.Fatalf("Error on valid Publish.Connect(): %v", pConnToken.Error())
 	}
 
 	payload := "sample Payload"
-	if pubToken := p.Publish(topic, 1, false, payload); pubToken.Wait() && pubToken.Error() != nil {
+	if pubToken := p.Publish(ctx, topic, 1, false, payload); pubToken.Wait() && pubToken.Error() != nil {
 		t.Fatalf("Error on valid Client.Publish(): %v", pubToken.Error())
 	}
 
@@ -1424,11 +1484,13 @@ resultLoop:
 		t.Error("did not receive message 1")
 	}
 
-	s.Disconnect(250)
-	p.Disconnect(250)
+	s.Disconnect(ctx, 250)
+	p.Disconnect(ctx, 250)
 }
 
 func Test_ResumeSubsWithReconnect(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/ResumeSubs"
 	var qos byte = 1
 
@@ -1436,7 +1498,7 @@ func Test_ResumeSubsWithReconnect(t *testing.T) {
 	ops := NewClientOptions().SetClientID("Start").AddBroker(FVTTCP).SetConnectRetry(true).SetConnectRetryInterval(time.Second / 2).
 		SetResumeSubs(true).SetCleanSession(false)
 	c := NewClient(ops)
-	sConnToken := c.Connect()
+	sConnToken := c.Connect(ctx)
 	sConnToken.Wait()
 	if sConnToken.Error() != nil {
 		t.Fatalf("Connect returned error (%v)", sConnToken.Error())
@@ -1457,7 +1519,7 @@ func Test_ResumeSubsWithReconnect(t *testing.T) {
 
 	persistOutbound(c.(*client).persist, sub)
 	// subToken := c.Subscribe(topic, qos, nil)
-	c.(*client).internalConnLost(fmt.Errorf("reconnection subscription test"))
+	c.(*client).internalConnLost(ctx, fmt.Errorf("reconnection subscription test"))
 
 	// As reconnect is enabled the client should automatically reconnect
 	subDone := make(chan bool)
@@ -1475,7 +1537,7 @@ func Test_ResumeSubsWithReconnect(t *testing.T) {
 		t.Fatalf("Timed out waiting for subToken to complete")
 	}
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }
 
 // Issue 509 - occasional deadlock when connections are lost unexpectedly
@@ -1485,6 +1547,8 @@ func Test_ResumeSubsWithReconnect(t *testing.T) {
 //
 //	go test -count 10000 -run DisconnectWhileProcessingIncomingPublish
 func Test_DisconnectWhileProcessingIncomingPublish(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/DisconnectWhileProcessingIncomingPublish"
 
 	pops := NewClientOptions()
@@ -1501,26 +1565,26 @@ func Test_DisconnectWhileProcessingIncomingPublish(t *testing.T) {
 	sops.SetClientID("dwpip-sub")
 	// We need to know when the subscriber has lost its connection (this indicates that the deadlock has not occurred)
 	sDisconnected := make(chan struct{})
-	sops.SetConnectionLostHandler(func(Client, error) { close(sDisconnected) })
+	sops.SetConnectionLostHandler(func(context.Context, Client, error) { close(sDisconnected) })
 
 	msgReceived := make(chan struct{})
 	var oneMsgReceived sync.Once
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		// No need to do anything when message received (just want ACK sent ASAP)
 		oneMsgReceived.Do(func() { close(msgReceived) })
 	}
 
 	s := NewClient(sops).(*client) // s = subscriber
-	if sToken := s.Connect(); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Connect(ctx); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on subscriber Client.Connect(): %v", sToken.Error())
 	}
 
-	if sToken := s.Subscribe(topic, 1, f); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Subscribe(ctx, topic, 1, f); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on subscriber Client.Subscribe(): %v", sToken.Error())
 	}
 
 	// Use a go routine to swamp the broker with messages
-	if pToken := p.Connect(); pToken.Wait() && pToken.Error() != nil { // p = publisher
+	if pToken := p.Connect(ctx); pToken.Wait() && pToken.Error() != nil { // p = publisher
 		t.Fatalf("Error on publisher Client.Connect(): %v", pToken.Error())
 	}
 	// We will hammer both the publisher and subscriber with messages
@@ -1530,9 +1594,9 @@ func Test_DisconnectWhileProcessingIncomingPublish(t *testing.T) {
 		defer close(pubDone)
 		i := 0
 		for {
-			p.Publish(topic, 1, false, fmt.Sprintf("test message: %d", i))
+			p.Publish(ctx, topic, 1, false, fmt.Sprintf("test message: %d", i))
 			// After the connection goes down s.Publish will start blocking (this is not ideal but fixing it's a problem for another time)
-			go func(i int) { s.Publish(topic+"IGNORE", 1, false, fmt.Sprintf("test message: %d", i)) }(i)
+			go func(i int) { s.Publish(ctx, topic+"IGNORE", 1, false, fmt.Sprintf("test message: %d", i)) }(i)
 			i++
 			if ctx.Err() != nil {
 				return
@@ -1585,7 +1649,7 @@ func Test_DisconnectWhileProcessingIncomingPublish(t *testing.T) {
 	case <-delay.C:
 		t.Errorf("pubdone not closed within two seconds (probably due to load on system but may be an issue)")
 	}
-	p.Disconnect(250) // Close publisher
+	p.Disconnect(ctx, 250) // Close publisher
 }
 
 // Test_ResumeSubsMaxInflight - Check the MaxResumePubInFlight option.
@@ -1595,6 +1659,8 @@ func Test_DisconnectWhileProcessingIncomingPublish(t *testing.T) {
 // On my PC (using mosquitto under docker) running this without SetMaxResumePubInFlight(1) will fail with 1000 messages
 // (generally passes if only 100 are sent). With the option set it always passes.
 func Test_ResumeSubsMaxInflight(t *testing.T) {
+	ctx := context.Background()
+
 	topic := "/test/ResumeSubsMaxInflight"
 	var qos byte = 1
 
@@ -1603,17 +1669,17 @@ func Test_ResumeSubsMaxInflight(t *testing.T) {
 	// subscribe to topic before establishing a connection, and publish a message after the publish client has connected successfully
 	sops := NewClientOptions().SetClientID("rsmif-Sub").AddBroker(FVTTCP).SetOrderMatters(true)
 	s := NewClient(sops) // s = subscriber
-	if sToken := s.Connect(); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Connect(ctx); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on subscriber Client.Connect(): %v", sToken.Error())
 	}
 
 	incommingMsg := make(chan int, 1000)
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		num, _ := strconv.Atoi(string(msg.Payload()))
 		incommingMsg <- num
 	}
 
-	if sToken := s.Subscribe(topic, qos, f); sToken.Wait() && sToken.Error() != nil {
+	if sToken := s.Subscribe(ctx, topic, qos, f); sToken.Wait() && sToken.Error() != nil {
 		t.Fatalf("Error on subscriber Client.Subscribe(): %v", sToken.Error())
 	}
 
@@ -1634,7 +1700,7 @@ func Test_ResumeSubsMaxInflight(t *testing.T) {
 	pops := NewClientOptions().AddBroker(FVTTCP).SetClientID("rsmif-Pub").SetOrderMatters(false).
 		SetCleanSession(false).SetStore(memStore).SetMaxResumePubInFlight(1)
 	p := NewClient(pops)
-	if pToken := p.Connect(); pToken.Wait() && pToken.Error() != nil { // Note: messages will be received before this completes
+	if pToken := p.Connect(ctx); pToken.Wait() && pToken.Error() != nil { // Note: messages will be received before this completes
 		t.Fatalf("Error on publisher Client.Connect(): %v", pToken.Error())
 	}
 	// We should receive 100 * 1's
@@ -1655,13 +1721,15 @@ getLoop:
 		}
 	}
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }
 
 // Test_OverLengthTopic - there was an issue where an overlength topic would result in the topic leaking into the
 // message body when it was overlength.
 func Test_OverLengthTopic(t *testing.T) {
+	ctx := context.Background()
+
 	const baseTopic = "/test/overlength/"
 	validTopic := baseTopic + strings.Repeat("A", 65535-len(baseTopic))
 	overLenTopic := validTopic + "B"
@@ -1676,10 +1744,10 @@ func Test_OverLengthTopic(t *testing.T) {
 	sops := NewClientOptions()
 	sops.AddBroker(FVTTCP)
 	sops.SetClientID("overlentopic-sub")
-	var f MessageHandler = func(client Client, msg Message) {
+	var f MessageHandler = func(ctx context.Context, client Client, msg Message) {
 		// Too long to print each time!
 		// fmt.Printf("TOPIC: %s\n", msg.Topic())
-		//fmt.Printf("MSG: %s\n", msg.Payload())
+		// fmt.Printf("MSG: %s\n", msg.Payload())
 		if msg.Topic() != validTopic {
 			t.Fatalf("Message topic incorrect (expected %s, got %s)", validTopic, msg.Topic())
 		}
@@ -1692,22 +1760,22 @@ func Test_OverLengthTopic(t *testing.T) {
 	sops.SetDefaultPublishHandler(f)
 
 	s := NewClient(sops)
-	if token := s.Connect(); token.Wait() && token.Error() != nil {
+	if token := s.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
-	if token := s.Subscribe(baseTopic+"#", 0, nil); token.Wait() && token.Error() != nil {
+	if token := s.Subscribe(ctx, baseTopic+"#", 0, nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Subscribe(): %v", token.Error())
 	}
 
-	if token := p.Connect(); token.Wait() && token.Error() != nil {
+	if token := p.Connect(ctx); token.Wait() && token.Error() != nil {
 		t.Fatalf("Error on Client.Connect(): %v", token.Error())
 	}
 
 	text := "oltopic payload"
-	p.Publish(overLenTopic, 0, false, text)
+	p.Publish(ctx, overLenTopic, 0, false, text)
 	wait(choke)
 
-	p.Disconnect(250)
-	s.Disconnect(250)
+	p.Disconnect(ctx, 250)
+	s.Disconnect(ctx, 250)
 }

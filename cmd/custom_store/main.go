@@ -22,6 +22,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -67,6 +68,8 @@ func (store *NoOpStore) Reset() {
 }
 
 func main() {
+	ctx := context.Background()
+
 	myNoOpStore := &NoOpStore{}
 
 	opts := MQTT.NewClientOptions()
@@ -74,21 +77,21 @@ func main() {
 	opts.SetClientID("custom-store")
 	opts.SetStore(myNoOpStore)
 
-	var callback MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
+	var callback MQTT.MessageHandler = func(ctx context.Context, client MQTT.Client, msg MQTT.Message) {
 		fmt.Printf("TOPIC: %s\n", msg.Topic())
 		fmt.Printf("MSG: %s\n", msg.Payload())
 	}
 
 	c := MQTT.NewClient(opts)
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
 
-	c.Subscribe("/go-mqtt/sample", 0, callback)
+	c.Subscribe(ctx, "/go-mqtt/sample", 0, callback)
 
 	for i := 0; i < 5; i++ {
 		text := fmt.Sprintf("this is msg #%d!", i)
-		token := c.Publish("/go-mqtt/sample", 0, false, text)
+		token := c.Publish(ctx, "/go-mqtt/sample", 0, false, text)
 		token.Wait()
 	}
 
@@ -96,5 +99,5 @@ func main() {
 		time.Sleep(1 * time.Second)
 	}
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }

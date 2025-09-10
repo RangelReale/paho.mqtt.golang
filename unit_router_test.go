@@ -19,6 +19,7 @@
 package mqtt
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ func Test_newRouter(t *testing.T) {
 
 func Test_AddRoute(t *testing.T) {
 	router := newRouter()
-	cb := func(client Client, msg Message) {
+	cb := func(ctx context.Context, client Client, msg Message) {
 	}
 	router.addRoute("/alpha", cb)
 
@@ -49,7 +50,7 @@ func Test_AddRoute(t *testing.T) {
 
 func Test_AddRoute_Wildcards(t *testing.T) {
 	router := newRouter()
-	cb := func(client Client, msg Message) {
+	cb := func(ctx context.Context, client Client, msg Message) {
 	}
 	router.addRoute("#", cb)
 	router.addRoute("topic1", cb)
@@ -61,7 +62,7 @@ func Test_AddRoute_Wildcards(t *testing.T) {
 
 func Test_DeleteRoute_Wildcards(t *testing.T) {
 	router := newRouter()
-	cb := func(client Client, msg Message) {
+	cb := func(ctx context.Context, client Client, msg Message) {
 	}
 	router.addRoute("#", cb)
 	router.addRoute("topic1", cb)
@@ -285,7 +286,7 @@ func Test_match(t *testing.T) {
 func Test_MatchAndDispatch(t *testing.T) {
 	calledback := make(chan bool)
 
-	cb := func(c Client, m Message) {
+	cb := func(ctx context.Context, c Client, m Message) {
 		calledback <- true
 	}
 
@@ -294,17 +295,17 @@ func Test_MatchAndDispatch(t *testing.T) {
 	pub.TopicName = "a"
 	pub.Payload = []byte("foo")
 
-	msgs := make(chan *packets.PublishPacket)
+	msgs := make(chan withContextData[*packets.PublishPacket])
 
 	router := newRouter()
 	router.addRoute("a", cb)
 
 	stopped := make(chan bool)
 	go func() {
-		router.matchAndDispatch(msgs, true, &client{oboundP: make(chan *PacketAndToken, 100)})
+		router.matchAndDispatch(msgs, true, &client{oboundP: make(chan withContextData[*PacketAndToken], 100)})
 		stopped <- true
 	}()
-	msgs <- pub
+	msgs <- withoutContext(pub)
 
 	<-calledback
 
@@ -321,7 +322,7 @@ func Test_MatchAndDispatch(t *testing.T) {
 func Test_SharedSubscription_MatchAndDispatch(t *testing.T) {
 	calledback := make(chan bool)
 
-	cb := func(c Client, m Message) {
+	cb := func(ctx context.Context, c Client, m Message) {
 		calledback <- true
 	}
 
@@ -330,18 +331,18 @@ func Test_SharedSubscription_MatchAndDispatch(t *testing.T) {
 	pub.TopicName = "a"
 	pub.Payload = []byte("foo")
 
-	msgs := make(chan *packets.PublishPacket)
+	msgs := make(chan withContextData[*packets.PublishPacket])
 
 	router := newRouter()
 	router.addRoute("$share/az1/a", cb)
 
 	stopped := make(chan bool)
 	go func() {
-		router.matchAndDispatch(msgs, true, &client{oboundP: make(chan *PacketAndToken, 100)})
+		router.matchAndDispatch(msgs, true, &client{oboundP: make(chan withContextData[*PacketAndToken], 100)})
 		stopped <- true
 	}()
 
-	msgs <- pub
+	msgs <- withoutContext(pub)
 
 	<-calledback
 
@@ -359,7 +360,7 @@ func Test_SharedSubscription_MatchAndDispatch(t *testing.T) {
 func Benchmark_MatchAndDispatch(b *testing.B) {
 	calledback := make(chan bool, 1)
 
-	cb := func(c Client, m Message) {
+	cb := func(ctx context.Context, c Client, m Message) {
 		calledback <- true
 	}
 
@@ -367,7 +368,7 @@ func Benchmark_MatchAndDispatch(b *testing.B) {
 	pub.TopicName = "a"
 	pub.Payload = []byte("foo")
 
-	msgs := make(chan *packets.PublishPacket, 1)
+	msgs := make(chan withContextData[*packets.PublishPacket], 1)
 
 	router := newRouter()
 	router.addRoute("a", cb)
@@ -378,7 +379,7 @@ func Benchmark_MatchAndDispatch(b *testing.B) {
 	stopped := make(chan bool)
 	go func() {
 		wg.Done() // started
-		<-router.matchAndDispatch(msgs, true, &client{oboundP: make(chan *PacketAndToken, 100)})
+		<-router.matchAndDispatch(msgs, true, &client{oboundP: make(chan withContextData[*PacketAndToken], 100)})
 		stopped <- true
 	}()
 
@@ -386,7 +387,7 @@ func Benchmark_MatchAndDispatch(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		msgs <- pub
+		msgs <- withoutContext(pub)
 		<-calledback
 	}
 

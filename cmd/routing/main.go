@@ -31,6 +31,7 @@ must wait for messages to be published.
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -41,21 +42,21 @@ var brokerLoad = make(chan bool)
 var brokerConnection = make(chan bool)
 var brokerClients = make(chan bool)
 
-func brokerLoadHandler(client MQTT.Client, msg MQTT.Message) {
+func brokerLoadHandler(ctx context.Context, client MQTT.Client, msg MQTT.Message) {
 	brokerLoad <- true
 	fmt.Printf("BrokerLoadHandler         ")
 	fmt.Printf("[%s]  ", msg.Topic())
 	fmt.Printf("%s\n", msg.Payload())
 }
 
-func brokerConnectionHandler(client MQTT.Client, msg MQTT.Message) {
+func brokerConnectionHandler(ctx context.Context, client MQTT.Client, msg MQTT.Message) {
 	brokerConnection <- true
 	fmt.Printf("BrokerConnectionHandler   ")
 	fmt.Printf("[%s]  ", msg.Topic())
 	fmt.Printf("%s\n", msg.Payload())
 }
 
-func brokerClientsHandler(client MQTT.Client, msg MQTT.Message) {
+func brokerClientsHandler(ctx context.Context, client MQTT.Client, msg MQTT.Message) {
 	brokerClients <- true
 	fmt.Printf("BrokerClientsHandler      ")
 	fmt.Printf("[%s]  ", msg.Topic())
@@ -63,25 +64,27 @@ func brokerClientsHandler(client MQTT.Client, msg MQTT.Message) {
 }
 
 func main() {
+	ctx := context.Background()
+
 	opts := MQTT.NewClientOptions().AddBroker("tcp://iot.eclipse.org:1883").SetClientID("router-sample")
 	opts.SetCleanSession(true)
 
 	c := MQTT.NewClient(opts)
-	if token := c.Connect(); token.Wait() && token.Error() != nil {
+	if token := c.Connect(ctx); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
 
-	if token := c.Subscribe("$SYS/broker/load/#", 0, brokerLoadHandler); token.Wait() && token.Error() != nil {
+	if token := c.Subscribe(ctx, "$SYS/broker/load/#", 0, brokerLoadHandler); token.Wait() && token.Error() != nil {
 		fmt.Println(token.Error())
 		os.Exit(1)
 	}
 
-	if token := c.Subscribe("$SYS/broker/connection/#", 0, brokerConnectionHandler); token.Wait() && token.Error() != nil {
+	if token := c.Subscribe(ctx, "$SYS/broker/connection/#", 0, brokerConnectionHandler); token.Wait() && token.Error() != nil {
 		fmt.Println(token.Error())
 		os.Exit(1)
 	}
 
-	if token := c.Subscribe("$SYS/broker/clients/#", 0, brokerClientsHandler); token.Wait() && token.Error() != nil {
+	if token := c.Subscribe(ctx, "$SYS/broker/clients/#", 0, brokerClientsHandler); token.Wait() && token.Error() != nil {
 		fmt.Println(token.Error())
 		os.Exit(1)
 	}
@@ -105,5 +108,5 @@ func main() {
 	fmt.Printf("Received %3d Broker Connection messages\n", connectionCount)
 	fmt.Printf("Received %3d Broker Clients messages\n", clientsCount)
 
-	c.Disconnect(250)
+	c.Disconnect(ctx, 250)
 }

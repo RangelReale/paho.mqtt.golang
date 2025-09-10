@@ -21,6 +21,7 @@
 package mqtt
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -28,7 +29,7 @@ import (
 )
 
 func TestSetCustomConnectionOptions(t *testing.T) {
-	var customConnectionFunc OpenConnectionFunc = func(uri *url.URL, options ClientOptions) (net.Conn, error) {
+	var customConnectionFunc OpenConnectionFunc = func(ctx context.Context, uri *url.URL, options ClientOptions) (net.Conn, error) {
 		return nil, fmt.Errorf("not implemented open connection func")
 	}
 	options := &ClientOptions{}

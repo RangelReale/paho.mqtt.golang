@@ -19,13 +19,12 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"golang.org/x/net/proxy"
 	"log"
 	"net/url"
-
 	// "log"
 	"os"
 	"os/signal"
@@ -33,10 +32,12 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/proxy"
+
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
-func onMessageReceived(_ MQTT.Client, message MQTT.Message) {
+func onMessageReceived(ctx context.Context, _ MQTT.Client, message MQTT.Message) {
 	fmt.Printf("Received message on topic: %s\nMessage: %s\n", message.Topic(), message.Payload())
 }
 
@@ -51,6 +52,8 @@ func init() {
  * Specify proxy via environment variable: eg: ALL_PROXY=https://proxy_host:port
  */
 func main() {
+	ctx := context.Background()
+
 	MQTT.DEBUG = log.New(os.Stdout, "", 0)
 	MQTT.ERROR = log.New(os.Stderr, "", 0)
 
@@ -81,28 +84,28 @@ func main() {
 			connOpts.SetPassword(*password)
 		}
 	} else if *token != "" {
-		connOpts.SetCredentialsProvider(func() (string, string) {
+		connOpts.SetCredentialsProvider(func(ctx context.Context) (string, string) {
 			return "unused", *token
 		})
 	}
 
 	connOpts.SetTLSConfig(&tls.Config{InsecureSkipVerify: *skipVerify, ClientAuth: tls.NoClientCert})
 
-	connOpts.OnConnect = func(c MQTT.Client) {
-		if token := c.Subscribe(*topic, byte(*qos), onMessageReceived); token.Wait() && token.Error() != nil {
+	connOpts.OnConnect = func(ctx context.Context, c MQTT.Client) {
+		if token := c.Subscribe(ctx, *topic, byte(*qos), onMessageReceived); token.Wait() && token.Error() != nil {
 			panic(token.Error())
 		}
 	}
 
 	// Illustrates customized TLS configuration prior to connection attempt
-	connOpts.OnConnectAttempt = func(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
+	connOpts.OnConnectAttempt = func(ctx context.Context, broker *url.URL, tlsCfg *tls.Config) *tls.Config {
 		cfg := tlsCfg.Clone()
 		cfg.ServerName = broker.Hostname()
 		return cfg
 	}
 
 	client := MQTT.NewClient(connOpts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
+	if token := client.Connect(ctx); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	} else {
 		fmt.Printf("Connected to %s\n", *server)

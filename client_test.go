@@ -19,6 +19,7 @@
 package mqtt
 
 import (
+	"context"
 	"net"
 	"net/url"
 	"strings"
@@ -27,6 +28,7 @@ import (
 )
 
 func TestCustomConnectionFunction(t *testing.T) {
+	ctx := context.Background()
 	// Set netpipe to emulate a connection of a different type
 	netClient, netServer := net.Pipe()
 	defer netClient.Close()
@@ -54,7 +56,7 @@ func TestCustomConnectionFunction(t *testing.T) {
 		}
 	}()
 	// Set custom network connection function and client connect
-	var customConnectionFunc OpenConnectionFunc = func(uri *url.URL, options ClientOptions) (net.Conn, error) {
+	var customConnectionFunc OpenConnectionFunc = func(ctx context.Context, uri *url.URL, options ClientOptions) (net.Conn, error) {
 		return netClient, nil
 	}
 	options := NewClientOptions().SetCustomOpenConnectionFn(customConnectionFunc)
@@ -64,7 +66,7 @@ func TestCustomConnectionFunction(t *testing.T) {
 
 	// Try to connect using custom function, wait for 2 seconds, to pass MQTT first message
 	// Note that the token should NOT complete (because a CONNACK is never sent)
-	token := client.Connect()
+	token := client.Connect(ctx)
 	if token.WaitTimeout(2 * time.Second) {
 		t.Fatal("token should not complete") // should be blocked waiting for CONNACK
 	}

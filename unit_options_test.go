@@ -19,6 +19,7 @@
 package mqtt
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"testing"
@@ -117,7 +118,7 @@ func Test_TLSConfig(t *testing.T) {
 }
 
 func Test_OnConnectionLost(t *testing.T) {
-	onconnlost := func(client Client, err error) {
+	onconnlost := func(ctx context.Context, client Client, err error) {
 		panic(err)
 	}
 	o := NewClientOptions().SetConnectionLostHandler(onconnlost)
