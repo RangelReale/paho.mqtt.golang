@@ -19,6 +19,7 @@
 package mqtt
 
 import (
+	"context"
 	"net/url"
 	"sync"
 
@@ -89,7 +90,7 @@ func messageFromPublish(p *packets.PublishPacket, ack func()) Message {
 	}
 }
 
-func newConnectMsgFromOptions(options *ClientOptions, broker *url.URL) *packets.ConnectPacket {
+func newConnectMsgFromOptions(ctx context.Context, options *ClientOptions, broker *url.URL) *packets.ConnectPacket {
 	m := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
 
 	m.CleanSession = options.CleanSession
@@ -112,7 +113,7 @@ func newConnectMsgFromOptions(options *ClientOptions, broker *url.URL) *packets.
 		}
 	}
 	if options.CredentialsProvider != nil {
-		username, password = options.CredentialsProvider()
+		username, password = options.CredentialsProvider(ctx)
 	}
 
 	if username != "" {

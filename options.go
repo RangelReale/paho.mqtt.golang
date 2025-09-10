@@ -22,6 +22,7 @@
 package mqtt
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"net/http"
@@ -32,35 +33,35 @@ import (
 
 // CredentialsProvider allows the username and password to be updated
 // before reconnecting. It should return the current username and password.
-type CredentialsProvider func() (username string, password string)
+type CredentialsProvider func(context.Context) (username string, password string)
 
 // MessageHandler is a callback type which can be set to be
 // executed upon the arrival of messages published to topics
 // to which the client is subscribed.
-type MessageHandler func(Client, Message)
+type MessageHandler func(context.Context, Client, Message)
 
 // ConnectionLostHandler is a callback type which can be set to be
 // executed upon an unintended disconnection from the MQTT broker.
 // Disconnects caused by calling Disconnect or ForceDisconnect will
 // not cause an OnConnectionLost callback to execute.
-type ConnectionLostHandler func(Client, error)
+type ConnectionLostHandler func(context.Context, Client, error)
 
 // OnConnectHandler is a callback that is called when the client
 // state changes from unconnected/disconnected to connected. Both
 // at initial connection and on reconnection
-type OnConnectHandler func(Client)
+type OnConnectHandler func(context.Context, Client)
 
 // ReconnectHandler is invoked prior to reconnecting after
 // the initial connection is lost
-type ReconnectHandler func(Client, *ClientOptions)
+type ReconnectHandler func(context.Context, Client, *ClientOptions)
 
 // ConnectionAttemptHandler is invoked prior to making the initial connection.
-type ConnectionAttemptHandler func(broker *url.URL, tlsCfg *tls.Config) *tls.Config
+type ConnectionAttemptHandler func(ctx context.Context, broker *url.URL, tlsCfg *tls.Config) *tls.Config
 
 // OpenConnectionFunc is invoked to establish the underlying network connection
 // Its purpose if for custom network transports.
 // Does not carry out any MQTT specific handshakes.
-type OpenConnectionFunc func(uri *url.URL, options ClientOptions) (net.Conn, error)
+type OpenConnectionFunc func(ctx context.Context, uri *url.URL, options ClientOptions) (net.Conn, error)
 
 // ClientOptions contains configurable options for an Client. Note that these should be set using the
 // relevant methods (e.g. AddBroker) rather than directly. See those functions for information on usage.
@@ -109,13 +110,14 @@ type ClientOptions struct {
 
 // NewClientOptions will create a new ClientClientOptions type with some
 // default values.
-//   Port: 1883
-//   CleanSession: True
-//   Order: True (note: it is recommended that this be set to FALSE unless order is important)
-//   KeepAlive: 30 (seconds)
-//   ConnectTimeout: 30 (seconds)
-//   MaxReconnectInterval 10 (minutes)
-//   AutoReconnect: True
+//
+//	Port: 1883
+//	CleanSession: True
+//	Order: True (note: it is recommended that this be set to FALSE unless order is important)
+//	KeepAlive: 30 (seconds)
+//	ConnectTimeout: 30 (seconds)
+//	MaxReconnectInterval 10 (minutes)
+//	AutoReconnect: True
 func NewClientOptions() *ClientOptions {
 	o := &ClientOptions{
 		Servers:                 nil,
@@ -450,6 +452,7 @@ func (o *ClientOptions) SetCustomOpenConnectionFn(customOpenConnectionFn OpenCon
 }
 
 // SetAutoAckDisabled enables or disables the Automated Acking of Messages received by the handler.
+//
 //	By default it is set to false. Setting it to true will disable the auto-ack globally.
 func (o *ClientOptions) SetAutoAckDisabled(autoAckDisabled bool) *ClientOptions {
 	o.AutoAckDisabled = autoAckDisabled

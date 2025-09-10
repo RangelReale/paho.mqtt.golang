@@ -20,6 +20,7 @@
 package mqtt
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -143,9 +144,9 @@ func startIncoming(conn io.Reader) <-chan inbound {
 // incomingComms encapsulates the possible output of the incomingComms routine. If err != nil then an error has occurred and
 // the routine will have terminated; otherwise one of the other members should be non-nil
 type incomingComms struct {
-	err         error                  // If non-nil then there has been an error (ignore everything else)
-	outbound    *PacketAndToken        // Packet (with token) than needs to be sent out (e.g. an acknowledgement)
-	incomingPub *packets.PublishPacket // A new publish has been received; this will need to be passed on to our user
+	err         error                                   // If non-nil then there has been an error (ignore everything else)
+	outbound    withContextData[*PacketAndToken]        // Packet (with token) than needs to be sent out (e.g. an acknowledgement)
+	incomingPub withContextData[*packets.PublishPacket] // A new publish has been received; this will need to be passed on to our user
 }
 
 // startIncomingComms initiates incoming communications; this includes starting a goroutine to process incoming
@@ -221,7 +222,7 @@ func startIncomingComms(conn io.Reader,
 				c.freeID(m.MessageID)
 			case *packets.PublishPacket:
 				DEBUG.Println(NET, "startIncomingComms: received publish, msgId:", m.MessageID)
-				output <- incomingComms{incomingPub: m}
+				output <- incomingComms{incomingPub: withoutContext(m)}
 			case *packets.PubackPacket:
 				DEBUG.Println(NET, "startIncomingComms: received puback, id:", m.MessageID)
 				c.getToken(m.MessageID).flowComplete()
@@ -230,13 +231,13 @@ func startIncomingComms(conn io.Reader,
 				DEBUG.Println(NET, "startIncomingComms: received pubrec, id:", m.MessageID)
 				prel := packets.NewControlPacket(packets.Pubrel).(*packets.PubrelPacket)
 				prel.MessageID = m.MessageID
-				output <- incomingComms{outbound: &PacketAndToken{p: prel, t: nil}}
+				output <- incomingComms{outbound: withoutContext(&PacketAndToken{p: prel, t: nil})}
 			case *packets.PubrelPacket:
 				DEBUG.Println(NET, "startIncomingComms: received pubrel, id:", m.MessageID)
 				pc := packets.NewControlPacket(packets.Pubcomp).(*packets.PubcompPacket)
 				pc.MessageID = m.MessageID
 				c.persistOutbound(pc)
-				output <- incomingComms{outbound: &PacketAndToken{p: pc, t: nil}}
+				output <- incomingComms{outbound: withoutContext(&PacketAndToken{p: pc, t: nil})}
 			case *packets.PubcompPacket:
 				DEBUG.Println(NET, "startIncomingComms: received pubcomp, id:", m.MessageID)
 				c.getToken(m.MessageID).flowComplete()
@@ -254,11 +255,11 @@ func startIncomingComms(conn io.Reader,
 // This function wil only terminate when all input channels are closed
 func startOutgoingComms(conn net.Conn,
 	c commsFns,
-	oboundp <-chan *PacketAndToken,
-	obound <-chan *PacketAndToken,
-	oboundFromIncoming <-chan *PacketAndToken,
-) <-chan error {
-	errChan := make(chan error)
+	oboundp <-chan withContextData[*PacketAndToken],
+	obound <-chan withContextData[*PacketAndToken],
+	oboundFromIncoming <-chan withContextData[*PacketAndToken],
+) <-chan withContextData[error] {
+	errChan := make(chan withContextData[error])
 	DEBUG.Println(NET, "outgoing started")
 
 	go func() {
@@ -280,7 +281,7 @@ func startOutgoingComms(conn net.Conn,
 					obound = nil
 					continue
 				}
-				msg := pub.p.(*packets.PublishPacket)
+				msg := pub.v.p.(*packets.PublishPacket)
 				DEBUG.Println(NET, "obound msg to write", msg.MessageID)
 
 				writeTimeout := c.getWriteTimeOut()
@@ -292,10 +293,10 @@ func startOutgoingComms(conn net.Conn,
 
 				if err := msg.Write(conn); err != nil {
 					ERROR.Println(NET, "outgoing obound reporting error ", err)
-					pub.t.setError(err)
+					pub.v.t.setError(err)
 					// report error if it's not due to the connection being closed elsewhere
 					if !strings.Contains(err.Error(), closedNetConnErrorText) {
-						errChan <- err
+						errChan <- withContext(pub.ctx, err)
 					}
 					continue
 				}
@@ -309,7 +310,7 @@ func startOutgoingComms(conn net.Conn,
 				}
 
 				if msg.Qos == 0 {
-					pub.t.flowComplete()
+					pub.v.t.flowComplete()
 				}
 				DEBUG.Println(NET, "obound wrote msg, id:", msg.MessageID)
 			case msg, ok := <-oboundp:
@@ -317,18 +318,18 @@ func startOutgoingComms(conn net.Conn,
 					oboundp = nil
 					continue
 				}
-				DEBUG.Println(NET, "obound priority msg to write, type", reflect.TypeOf(msg.p))
-				if err := msg.p.Write(conn); err != nil {
+				DEBUG.Println(NET, "obound priority msg to write, type", reflect.TypeOf(msg.v.p))
+				if err := msg.v.p.Write(conn); err != nil {
 					ERROR.Println(NET, "outgoing oboundp reporting error ", err)
-					if msg.t != nil {
-						msg.t.setError(err)
+					if msg.v.t != nil {
+						msg.v.t.setError(err)
 					}
-					errChan <- err
+					errChan <- withContext(msg.ctx, err)
 					continue
 				}
 
-				if _, ok := msg.p.(*packets.DisconnectPacket); ok {
-					msg.t.(*DisconnectToken).flowComplete()
+				if _, ok := msg.v.p.(*packets.DisconnectPacket); ok {
+					msg.v.t.(*DisconnectToken).flowComplete()
 					DEBUG.Println(NET, "outbound wrote disconnect, closing connection")
 					// As per the MQTT spec "After sending a DISCONNECT Packet the Client MUST close the Network Connection"
 					// Closing the connection will cause the goroutines to end in sequence (starting with incoming comms)
@@ -339,13 +340,13 @@ func startOutgoingComms(conn net.Conn,
 					oboundFromIncoming = nil
 					continue
 				}
-				DEBUG.Println(NET, "obound from incoming msg to write, type", reflect.TypeOf(msg.p), " ID ", msg.p.Details().MessageID)
-				if err := msg.p.Write(conn); err != nil {
+				DEBUG.Println(NET, "obound from incoming msg to write, type", reflect.TypeOf(msg.v.p), " ID ", msg.v.p.Details().MessageID)
+				if err := msg.v.p.Write(conn); err != nil {
 					ERROR.Println(NET, "outgoing oboundFromIncoming reporting error", err)
-					if msg.t != nil {
-						msg.t.setError(err)
+					if msg.v.t != nil {
+						msg.v.t.setError(err)
 					}
-					errChan <- err
+					errChan <- withContext(msg.ctx, err)
 					continue
 				}
 			}
@@ -381,14 +382,14 @@ type commsFns interface {
 func startComms(conn net.Conn, // Network connection (must be active)
 	c commsFns, // getters and setters to enable us to cleanly interact with client
 	inboundFromStore <-chan packets.ControlPacket, // Inbound packets from the persistence store (should be closed relatively soon after startup)
-	oboundp <-chan *PacketAndToken,
-	obound <-chan *PacketAndToken) (
-	<-chan *packets.PublishPacket, // Publishpackages received over the network
-	<-chan error, // Any errors (should generally trigger a disconnect)
+	oboundp <-chan withContextData[*PacketAndToken],
+	obound <-chan withContextData[*PacketAndToken]) (
+	<-chan withContextData[*packets.PublishPacket], // Publishpackages received over the network
+	<-chan withContextData[error], // Any errors (should generally trigger a disconnect)
 ) {
 	// Start inbound comms handler; this needs to be able to transmit messages so we start a go routine to add these to the priority outbound channel
 	ibound := startIncomingComms(conn, c, inboundFromStore)
-	outboundFromIncoming := make(chan *PacketAndToken) // Will accept outgoing messages triggered by startIncomingComms (e.g. acknowledgements)
+	outboundFromIncoming := make(chan withContextData[*PacketAndToken]) // Will accept outgoing messages triggered by startIncomingComms (e.g. acknowledgements)
 
 	// Start the outgoing handler. It is important to note that output from startIncomingComms is fed into startOutgoingComms (for ACK's)
 	oboundErr := startOutgoingComms(conn, c, oboundp, obound, outboundFromIncoming)
@@ -399,21 +400,21 @@ func startComms(conn net.Conn, // Network connection (must be active)
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	outPublish := make(chan *packets.PublishPacket)
-	outError := make(chan error)
+	outPublish := make(chan withContextData[*packets.PublishPacket])
+	outError := make(chan withContextData[error])
 
 	// Any messages received get passed to the appropriate channel
 	go func() {
 		for ic := range ibound {
 			if ic.err != nil {
-				outError <- ic.err
+				outError <- withoutContext(ic.err)
 				continue
 			}
-			if ic.outbound != nil {
+			if ic.outbound.v != nil {
 				outboundFromIncoming <- ic.outbound
 				continue
 			}
-			if ic.incomingPub != nil {
+			if ic.incomingPub.v != nil {
 				outPublish <- ic.incomingPub
 				continue
 			}
@@ -447,21 +448,21 @@ func startComms(conn net.Conn, // Network connection (must be active)
 // WARNING the function returned must not be called if the comms routine is shutting down or not running
 // (it needs outgoing comms in order to send the acknowledgement). Currently this is only called from
 // matchAndDispatch which will be shutdown before the comms are
-func ackFunc(oboundP chan *PacketAndToken, persist Store, packet *packets.PublishPacket) func() {
+func ackFunc(ctx context.Context, oboundP chan withContextData[*PacketAndToken], persist Store, packet *packets.PublishPacket) func() {
 	return func() {
 		switch packet.Qos {
 		case 2:
 			pr := packets.NewControlPacket(packets.Pubrec).(*packets.PubrecPacket)
 			pr.MessageID = packet.MessageID
 			DEBUG.Println(NET, "putting pubrec msg on obound")
-			oboundP <- &PacketAndToken{p: pr, t: nil}
+			oboundP <- withContext(ctx, &PacketAndToken{p: pr, t: nil})
 			DEBUG.Println(NET, "done putting pubrec msg on obound")
 		case 1:
 			pa := packets.NewControlPacket(packets.Puback).(*packets.PubackPacket)
 			pa.MessageID = packet.MessageID
 			DEBUG.Println(NET, "putting puback msg on obound")
 			persistOutbound(persist, pa)
-			oboundP <- &PacketAndToken{p: pa, t: nil}
+			oboundP <- withContext(ctx, &PacketAndToken{p: pa, t: nil})
 			DEBUG.Println(NET, "done putting puback msg on obound")
 		case 0:
 			// do nothing, since there is no need to send an ack packet back

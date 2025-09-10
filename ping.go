@@ -19,6 +19,7 @@
 package mqtt
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sync/atomic"
@@ -70,7 +71,7 @@ func keepalive(c *client, conn io.Writer) {
 			}
 			if atomic.LoadInt32(&c.pingOutstanding) > 0 && time.Since(pingSent) >= c.options.PingTimeout {
 				CRITICAL.Println(PNG, "pingresp not received, disconnecting")
-				c.internalConnLost(errors.New("pingresp not received, disconnecting")) // no harm in calling this if the connection is already down (or shutdown is in progress)
+				c.internalConnLost(context.Background(), errors.New("pingresp not received, disconnecting")) // no harm in calling this if the connection is already down (or shutdown is in progress)
 				return
 			}
 		}
